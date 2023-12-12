@@ -1,0 +1,29 @@
+cluster.name: cpstage-opensearch
+node.name: cpstage-opensearch-node1.project.net
+path.data: /var/lib/opensearch/data
+path.logs: /var/log/opensearch
+network.host: 0.0.0.0
+http.port: 9200
+#discovery.seed_hosts: ["cpstage-opensearch-node1.project.net:9300", "cpstage-opensearch-node2.project.net:9300"]
+cluster.initial_master_nodes: ["cpstage-opensearch-node1.project.net"]
+
+plugins.security.ssl.transport.pemcert_filepath: ssl/node1.pem
+plugins.security.ssl.transport.pemkey_filepath: ssl/node1-key.pem
+plugins.security.ssl.transport.pemtrustedcas_filepath: ssl/CA.pem
+plugins.security.ssl.http.enabled: true
+plugins.security.ssl.http.pemcert_filepath: ssl/node1.pem
+plugins.security.ssl.http.pemkey_filepath: ssl/node1-key.pem
+plugins.security.ssl.http.pemtrustedcas_filepath: ssl/CA.pem
+plugins.security.allow_default_init_securityindex: true
+plugins.security.authcz.admin_dn:
+  - "C=RU,L=Moscow,O=Company ,OU=Develop,CN=CA Company Root"
+plugins.security.nodes_dn:
+  - "C=RU,L=Moscow,O=Company ,OU=Develop,CN=cpstage-opensearch-node1.project.net"
+
+plugins.security.audit.type: internal_opensearch
+plugins.security.enable_snapshot_restore_privilege: true
+plugins.security.check_snapshot_restore_write_privileges: true
+plugins.security.restapi.roles_enabled: ["all_access", "security_rest_api_access"]
+plugins.security.system_indices.enabled: true
+plugins.security.system_indices.indices: [".opendistro-alerting-config", ".opendistro-alerting-alert*", ".opendistro-anomaly-results*", ".opendistro-anomaly-detector*", ".opendistro-anomaly-checkpoints", ".opendistro-anomaly-detection-state", ".opendistro-reports-*", ".opendistro-notifications-*", ".opendistro-notebooks", ".opensearch-observability", ".opendistro-asynchronous-search-response*", ".replication-metadata-store"]
+node.max_local_storage_nodes: 3

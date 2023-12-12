@@ -1,0 +1,41 @@
+#cloud-config
+package_update: true
+packages:
+  - nginx-1:1.18.0-8.el7.3
+  - procps 
+  - net-tools 
+  - iputils
+  - wget
+  - rpmlint
+  - rpmdevtools
+
+users:
+  - name: deploy
+    passwd: "VeryStrongPassword"
+    groups: wheel
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa
+write_files:
+  - path: /etc/pki/ca-trust/source/anchors/CA.crt
+    content: |
+      -----BEGIN CERTIFICATE-----
+
+      -----END CERTIFICATE-----
+
+  - path: /etc/yum.repos.d/Project-nexus.repo
+    content: |
+      [Project_nexus]
+      name=Project Nexus Repository
+      baseurl=https://nexus.project.net/repository/rpm-hosted-Project/
+      enabled=1
+      gpgcheck=0
+runcmd:
+  - update-ca-trust extract
+  - dnf makecache
+  - passwd -d deploy
+  - echo net.ipv6.conf.all.disable_ipv6=1 | sudo tee -a /etc/sysctl.conf
+  - sysctl -p
+  - setenforce 0
+  - sudo sed -i 's/SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+  - systemctl enable --now nginx.service

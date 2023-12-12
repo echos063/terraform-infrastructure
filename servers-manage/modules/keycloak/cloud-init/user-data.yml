@@ -1,0 +1,72 @@
+#cloud-config
+package_update: true
+packages:
+  - procps
+  - net-tools
+  - iputils
+  - wget
+  - libXi
+  - libXtst
+
+users:
+  - name: keycloak
+    passwd: "VeryStrongPassword"
+    shell: /bin/bash
+  - name: deploy
+    passwd: "VeryStrongPassword"
+    groups: wheel
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa
+write_files:
+  - path: /etc/pki/ca-trust/source/anchors/CA.crt
+    content: |
+      -----BEGIN CERTIFICATE-----
+
+      -----END CERTIFICATE-----
+
+  - path: /etc/yum.repos.d/Project-nexus.repo
+    content: |
+      [Project_nexus]
+      name=Project Nexus Repository
+      baseurl=https://nexus.project.net/repository/rpm-hosted-Project/
+      enabled=1
+      gpgcheck=0
+
+  - path: /etc/systemd/system/keycloak.service
+    content: |
+      [Unit]
+      Description=Keycloak
+      After=network.target
+      
+      [Service]
+      Type=idle
+      User=keycloak
+      Group=keycloak
+      SuccessExitStatus=0 143
+      ExecStart=/etc/keycloak/bin/kc.sh start --hostname=envdev-keycloak.project.net:8443
+      TimeoutStartSec=600
+      TimeoutStopSec=600
+      
+      StandardOutput=file:/var/log/keycloak/keycloak.log
+      StandardError=file:/var/log/keycloak/keycloak-error.log
+      
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - update-ca-trust extract
+  - dnf makecache
+  - passwd -d deploy
+  - passwd -d keycloak
+  - mkdir /var/log/keycloak && chown -R keycloak:keycloak /var/log/keycloak
+  - mkdir -p /etc/keycloak
+  - cd /tmp && wget https://github.com/keycloak/keycloak/releases/download/17.0.0/keycloak-17.0.0.tar.gz
+  - cd /etc/keycloak && tar -xzf /tmp/keycloak-17.0.0.tar.gz
+  - chown -R keycloak:keycloak /etc/keycloak
+  - cd /tmp && wget https://nexus.project.net/repository/rpm-hosted-Project/bellsoft-jdk17.0.6%2B10-linux-amd64.rpm
+  - cd /tmp && rpm --install bellsoft-jdk17.0.6+10-linux-amd64.rpm
+  - setenforce 0
+  - sudo sed -i 's/SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+  - systemctl daemon-reload
+  - systemctl enable --now keycloak.service

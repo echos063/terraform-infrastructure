@@ -1,0 +1,47 @@
+data_dir: "/etc/vector"
+
+api:
+  enabled: true
+  address: 0.0.0.0:8686
+
+sources:
+  applications_log:
+    type: journald
+    batch_size: 16
+    current_boot_only: false
+    data_dir: /etc/vector
+    exclude_matches:
+      _SYSTEMD_UNIT:
+        - sshd.service
+        - ntpd.service
+      _TRANSPORT:
+        - kernel
+      exclude_units:
+        - badservice
+      extra_args:
+        - --merge
+    include_matches:
+      _SYSTEMD_UNIT:
+        - Project-ProjectName-app1.service
+        - Project-ProjectName-app2.service
+        - Project-ProjectName-app3.service
+        - Project-ProjectName-app4.service
+
+transforms:
+  log_parser:
+    type: "remap"
+    inputs:
+      - "applications_log"
+    source: |
+      . = parse_json!(.message)
+      .status = to_int!(.status)
+      .duration = parse_duration!(.duration, "s")
+    timezone: local
+
+sinks:
+  transfer_logs:
+    type: "vector"
+    version: "2"
+    inputs:
+      - "log_parser"
+    address: 10.11.110.24:9000

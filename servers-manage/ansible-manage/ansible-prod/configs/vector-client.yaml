@@ -1,0 +1,27 @@
+data_dir: "/etc/vector"
+
+api:
+  enabled: true
+  address: 0.0.0.0:8686
+
+sources:
+  applications_files:
+    type: "file"
+    include:
+      - "/var/log/**/*.log"
+
+transforms:
+  file_parser:
+    type: "remap"
+    inputs:
+      - "applications_files"
+    source: |
+      ., err = parse_json(.message)
+
+sinks:
+  transfer_logs:
+    type: "vector"
+    version: "2"
+    inputs:
+      - "file_parser"
+    address: 10.11.110.24:9000

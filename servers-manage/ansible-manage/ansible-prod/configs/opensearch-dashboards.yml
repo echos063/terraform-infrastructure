@@ -1,0 +1,11 @@
+server.host: "0.0.0.0"
+opensearch.hosts: ["https://envprod-opensearch-node1.project.net:9200"]
+opensearch.ssl.verificationMode: full
+opensearch.username: "admin"
+opensearch.password: "admin"
+server.ssl.enabled: true
+server.ssl.certificate: /etc/opensearch-dashboards/config/ssl/opensearch-dashboards.pem
+server.ssl.key: /etc/opensearch-dashboards/config/ssl/opensearch-dashboards-key.pem
+server.ssl.certificateAuthorities: [ "/etc/opensearch-dashboards/config/ssl/CA.pem", "/etc/opensearch-dashboards/config/ssl/admin.pem" ]
+opensearch.ssl.certificateAuthorities: [ "/etc/opensearch-dashboards/config/ssl/CA.pem", "/etc/opensearch-dashboards/config/ssl/admin.pem" ]
+opensearch_security.multitenancy.enabled: true

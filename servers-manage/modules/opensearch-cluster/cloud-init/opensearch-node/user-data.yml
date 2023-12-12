@@ -1,0 +1,67 @@
+#cloud-config
+package_update: true
+packages:
+  - procps 
+  - net-tools
+  - iputils
+  - wget
+  - java
+
+users:
+  - name: opensearch
+    passwd: "VeryStrongPassword"
+    shell: /bin/bash
+  - name: deploy
+    passwd: "VeryStrongPassword" 
+    groups: wheel
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa
+write_files:
+  - path: /etc/pki/ca-trust/source/anchors/CA.crt
+    content: |
+      -----BEGIN CERTIFICATE-----
+
+      -----END CERTIFICATE-----
+
+  - path: /etc/yum.repos.d/Project-nexus.repo
+    content: |
+      [Project_nexus]
+      name=Project Nexus Repository
+      baseurl=https://nexus.project.net/repository/rpm-hosted-Project/
+      enabled=1
+      gpgcheck=0
+
+  - path: /etc/systemd/system/opensearch.service
+    content: |
+      [Unit]
+      Description=OpenSearch running service
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      Type=simple
+      WorkingDirectory=/etc/opensearch
+      ExecStart=/etc/opensearch/bin/opensearch
+      User=opensearch
+      Group=opensearch
+
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - update-ca-trust extract
+  - dnf makecache
+  - mkdir /etc/opensearch
+  - cd /tmp && wget https://artifacts.opensearch.org/releases/bundle/opensearch/1.2.4/opensearch-1.2.4-linux-x64.tar.gz
+  - tar -xvf opensearch-1.2.4-linux-x64.tar.gz && cp -r /tmp/opensearch-1.2.4/* /etc/opensearch
+  - mkdir /var/log/opensearch && chown -R opensearch:opensearch /var/log/opensearch
+  - chown -R opensearch:opensearch /etc/opensearch
+  - passwd -d deploy
+  - passwd -d opensearch
+  - echo vm.max_map_count=262144 | sudo tee -a /etc/sysctl.conf
+  - echo net.ipv6.conf.all.disable_ipv6=1 | sudo tee -a /etc/sysctl.conf
+  - sysctl -p
+  - setenforce 0
+  - sudo sed -i 's/SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+  - systemctl daemon-reload
+  - systemctl enable --now opensearch.service

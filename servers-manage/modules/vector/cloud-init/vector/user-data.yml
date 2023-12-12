@@ -1,0 +1,69 @@
+#cloud-config
+package_update: true
+packages:
+  - procps 
+  - net-tools 
+  - iputils
+  - wget
+
+users:
+  - name: vector
+    passwd: "VeryStrongPassword"
+    shell: /bin/bash
+  - name: deploy
+    passwd: "VeryStrongPassword" 
+    groups: wheel
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCXGJPyQiGifsDB05FKw8/qDYfLcbbimbAH8gkkh2VfzIEI4WjQM3CV8UoVhaO/Xcz/EHsBZvBQyUptw3jgOhpELnvy+foPTdb/Vxj3Na1gMzQmUXhe9ensc930wJ3CVStzdz5obHLo//B18ZsOYQ2mCNiQa0A3UgBZXdfxBWZoOf1bVTktjJModO3hZhrKyEtrAs5tlUhbJMht9Yfz00LGzC3ap6RbFjbCyPTn8VRCevU2/NgySTcbPgaAZmPOpfAGbMO9X2KcZTkbyMuR6rETP2BDh4vW3H6IUZGWv6YAbvXaoD1cKT8x0BhzOmfdpD305LM4txj7a7jxs4b2tQZ9 ubuntu@6942-U22-VM01
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDu43AAh14rzDlweZAy0lhAZIOsTDhK5SRAw9Abs+tzO00hH/4totDGNsjRJROz22zHU/03w8s5Wp0hmD1yYv8hk3eTBYpNneTIRJutCaoe1RDTYiglKgMarNGUZHMZ/zRbYKyHa833YOQv8UYyMgJJOrAoDd18OuyxwgGyfSfVG6Ity3SzjvA/4EofxwWofppYK9LNYN0nd5t85j5uQLs4eJJyTTciCoUQ0OnrBKHUJaEojqoRV72eKjb/lK3RoOdHELUv6ct6CNj+3y/3VQxbT14yL3mQgfjc9YTEh0Ho9N30r/6FaqSlH80pmxk6ADH36rWPfeTpq0hzfBzYmxfI3pDMtMwPs+iahBbxh/fLHYesuEBE3OcTtcOJR+uWobxwrwBG2jMuqrFCfEQXybg2P6ZcT5undG7+rOpg1V6CmAcK7b0i3IOsXCCGlob3HRfq4SIaLuWEmbHebQJiYy/baAxXAo8I/dTZloGkTgLBeVgTZ+yB6xFtrSvhjMsEGoc= dima@phost
+write_files:
+  - path: /etc/pki/ca-trust/source/anchors/CA.crt
+    content: |
+      -----BEGIN CERTIFICATE-----
+
+      -----END CERTIFICATE-----
+
+  - path: /etc/yum.repos.d/Project-nexus.repo
+    content: |
+      [Project_nexus]
+      name=Project Nexus Repository
+      baseurl=https://nexus.project.net/repository/rpm-hosted-Project/
+      enabled=1
+      gpgcheck=0
+
+  - path: /etc/systemd/system/vector.service
+    content: |
+      [Unit]
+      Description=Vector
+      Documentation=https://vector.dev
+      After=network-online.target
+      Requires=network-online.target
+
+      [Service]
+      User=root
+      Group=root
+      ExecStartPre=/usr/bin/vector validate --config-yaml /etc/vector/vector.yaml
+      ExecStart=/usr/bin/vector --config-yaml /etc/vector/vector.yaml
+      ExecReload=/usr/bin/vector validate --config-yaml /etc/vector/vector.yaml
+      ExecReload=/bin/kill -HUP $MAINPID
+      Restart=no
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      EnvironmentFile=-/etc/default/vector
+      StandardOutput=file:/var/log/vector/vector.log
+      StandardError=file:/var/log/vector/vector-error.log
+
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - update-ca-trust extract
+  - dnf makecache
+  - passwd -d deploy
+  - passwd -d vector
+  - echo vm.max_map_count=262144 | sudo tee -a /etc/sysctl.conf
+  - echo net.ipv6.conf.all.disable_ipv6=1 | sudo tee -a /etc/sysctl.conf
+  - sudo sed -i 's/SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+  - sysctl -p
+  - setenforce 0
+  - systemctl daemon-reload
+  - systemctl enable --now vector.service

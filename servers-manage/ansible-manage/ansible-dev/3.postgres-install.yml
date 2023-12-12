@@ -1,0 +1,128 @@
+# Updating and installing packages
+- name: Environment for users installing
+  hosts:
+    - postgres-infra
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+    - name: Update servers
+      command: dnf makecache
+    - name: Install packages
+      package:
+        name:
+          - vim
+          - tree
+          - bash-completion
+          - nginx-1:1.18.0-8.el7.3
+          - telnet
+          - python3-psycopg2
+        state: present
+    - name: Check file bash-completion in /home/deploy/.bashrc
+      shell: cat /home/deploy/.bashrc | grep -q "Auto-completion"
+      ignore_errors: true
+      register: grep_result
+    - name: Check file bash-completion in /root/.bashrc
+      shell: cat /root/.bashrc | grep -q "Auto-completion"
+      ignore_errors: true
+      register: grep_result
+    - name: Read bash-completion file
+      slurp:
+        src: ../shared_files/bash-completion
+      delegate_to: localhost
+      become_user: ubuntu
+      register: bash_completion_contents
+    - name: Adding auto-completion into /home/deploy/.bashrc
+      lineinfile:
+        path: /home/deploy/.bashrc
+        line: "{{ bash_completion_contents['content'] | b64decode }}"
+      when: grep_result.rc !=0
+    - name: Adding auto-completion into /root/.bashrc
+      lineinfile:
+        path: /root/.bashrc
+        line: "{{ bash_completion_contents['content'] | b64decode }}"
+      when: grep_result.rc !=0
+
+    - name: Create log directory for PostgreSQL
+      file:
+        path: /var/log/postgresql
+        owner: postgres
+        group: postgres
+        mode: '0755'
+        state: directory
+
+    - name: Check if custom entry exists in pg_hba.conf
+      shell: grep -q 'host\s*keycloak\s*keycloak\s*all\s*password' /var/lib/pgsql/14/data/pg_hba.conf
+      register: custom_entry_exists
+      changed_when: false
+      ignore_errors: true
+
+    - name: Add custom entry to pg_hba.conf
+      lineinfile:
+        path: /var/lib/pgsql/14/data/pg_hba.conf
+        line: 'host keycloak  keycloak  all password'
+      when: custom_entry_exists.rc != 0
+
+    - name: Update PostgreSQL configuration for log directory and format
+      lineinfile:
+        path: /var/lib/pgsql/14/data/postgresql.conf
+        regexp: '^#? *(log_directory|log_filename) *=.*'
+        line: |
+          log_directory = '/var/log/postgresql/'
+          log_filename = 'postgresql-%d-%m-%Y.log'
+      when: ansible_postgresql_log_directory is defined and '/var/log/postgresql/' != ansible_postgresql_log_directory
+
+    - name: Update PostgreSQL log directory path
+      lineinfile:
+        path: /var/lib/pgsql/14/data/postgresql.conf
+        regexp: '^#? *log_directory *=.*'
+        line: "log_directory = '/var/log/postgresql/'"
+
+    - name: Update PostgreSQL log filename format
+      lineinfile:
+        path: /var/lib/pgsql/14/data/postgresql.conf
+        regexp: '^#? *log_filename *=.*'
+        line: "log_filename = '%d-%m-%Y-postgresql.log'"
+
+- name: Create PostgreSQL user and database for Keycloak
+  hosts: postgres-infra
+  become: yes
+  become_user: postgres
+  vars:
+    db_name: keycloak-db
+    db_user: keycloak
+    db_password: VeryStrongPassword
+  tasks:
+    - name: Create app database
+      postgresql_db:
+        state: present
+        name: "{{ db_name }}"
+      become: yes
+
+    - name: Create db user
+      postgresql_user:
+        state: present
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+      become: yes
+
+    - name: Grant db user access to app db
+      postgresql_privs:
+        type: database
+        database: "{{ db_name }}"
+        roles: "{{ db_user }}"
+        grant_option: no
+        privs: all
+      become: yes
+
+- name: Restart PostgreSQL
+  hosts:
+    - postgres-infra
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+    - name: Reload PostgreSQL
+      systemd:
+        name: postgresql-14
+        state: restarted

@@ -1,0 +1,24 @@
+data_dir: "/etc/vector"
+
+api:
+  enabled: true
+  address: 0.0.0.0:8686
+
+sources:
+  incoming_logs:
+    type: "vector"
+    address: "0.0.0.0:9000"
+    version: "2"
+
+sinks:
+  file_sink:
+    type: elasticsearch
+    inputs: ["incoming_logs"]
+    endpoint: "https://envdev-opensearch-node1.project.net:9200"
+    auth:
+      user: "admin"
+      password: "admin"
+      strategy: "basic"
+    bulk:
+      action: "create"
+      index: "applications-%Y-%m-%d"

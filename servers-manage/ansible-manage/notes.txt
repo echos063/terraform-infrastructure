@@ -1,0 +1,11 @@
+Проверка подключения к кластеру
+cd /etc/opensearch/plugins/opensearch-security/tools/
+sudo -u opensearch ./securityadmin.sh -cd ../securityconfig/ -icl -nhnv -cacert /etc/opensearch/config/ssl/CA.pem -cert /etc/opensearch/config/ssl/admin.pem -key /etc/opensearch/config/ssl/admin-key.pem
+
+Админский логин-пароль
+admin
+$2y$12$CDVz42N5ltmSQ2F0WoiH1e1ySJz7vKP0Ly0M29Dz06H5DDRkJ9Vfe
+
+"/CN=envdev-opensearch-node2.project.net/OU=Develop/O=Company /L=Moscow/C=RU"
+"/CN=envdev-opensearch-dashboard.project.net/OU=Develop/O=Company /L=Moscow/C=RU"
+"/CN=envdev-keycloak.project.net/OU=Develop/O=Company /L=Moscow/C=RU"

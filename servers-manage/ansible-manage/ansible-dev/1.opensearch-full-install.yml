@@ -1,0 +1,214 @@
+---
+# Updating and installing packages
+- name: Environment for users installing
+  hosts:
+    - opensearch-node1
+    - opensearch-dashboards
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+    - name: Update servers
+      command: dnf makecache
+    - name: Install packages
+      package:
+        name:
+          - vim
+          - tree
+          - bash-completion
+          - nginx-1:1.18.0-8.el7.3
+          - telnet
+        state: present
+    - name: Check file bash-completion in /home/deploy/.bashrc
+      shell: cat /home/deploy/.bashrc | grep -q "Auto-completion"
+      ignore_errors: true
+      register: grep_result
+    - name: Check file bash-completion in /root/.bashrc
+      shell: cat /root/.bashrc | grep -q "Auto-completion"
+      ignore_errors: true
+      register: grep_result
+    - name: Read bash-completion file
+      slurp:
+        src: ../shared_files/bash-completion
+      delegate_to: localhost
+      become_user: ubuntu
+      register: bash_completion_contents
+    - name: Adding auto-completion into /home/deploy/.bashrc
+      lineinfile:
+        path: /home/deploy/.bashrc
+        line: "{{ bash_completion_contents['content'] | b64decode }}"
+      when: grep_result.rc !=0
+    - name: Adding auto-completion into /root/.bashrc
+      lineinfile:
+        path: /root/.bashrc
+        line: "{{ bash_completion_contents['content'] | b64decode }}"
+      when: grep_result.rc !=0
+
+# Creating directories for opensearch-nodes
+- name: Creating directories for opensearch-nodes
+  hosts:
+    - opensearch-node1
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+  - name: Create ssl directory for opensearch-nodes
+    file:
+      path: /etc/opensearch/config/ssl
+      owner: opensearch
+      group: opensearch
+      mode: '0755'
+      state: directory
+
+  - name: Create data directory for opensearch-nodes
+    file:
+      path: /var/lib/opensearch/data
+      owner: opensearch
+      group: opensearch
+      mode: '0755'
+      state: directory
+
+  - name: Create log directory for opensearch-nodes
+    file:
+      path: /var/log/opensearch
+      owner: opensearch
+      group: opensearch
+      mode: '0755'
+      state: directory
+
+  - name: Set permissions on the directory
+    file:
+      path: /etc/opensearch/config/ssl
+      owner: opensearch
+      group: opensearch
+      mode: '0755'
+      state: directory
+
+# Creating directories for opensearch-dashboards
+- name: Creating directories for opensearch-dashboards
+  hosts: opensearch-dashboards
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+  - name: Create ssl directory
+    file:
+      path: /etc/opensearch-dashboards/config/ssl
+      owner: opensearch
+      group: opensearch
+      mode: '0755'
+      state: directory
+
+  - name: Create data directory for opensearch-dashboards
+    file:
+      path: /var/lib/opensearch-dashboards/data
+      owner: opensearch
+      group: opensearch
+      mode: '0755'
+      state: directory
+
+  - name: Create log directory for opensearch-dashboards
+    file:
+      path: /var/log/opensearch-dashboards
+      owner: opensearch
+      group: opensearch
+      mode: '0755'
+      state: directory
+
+- name: Configuring Opensearch Nodes
+  hosts:
+    - opensearch-node1
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+    - name: Finding .pem certificates
+      find:
+        paths: /etc/opensearch/config
+        patterns: "*.pem"
+      register: pem_files
+
+    - name: Deleting default certificates *.pem
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      with_items: "{{ pem_files.configs }}"
+
+    - name: Copying shared certificates
+      copy:
+        src: ../shared_certs/CA/CA.pem
+        dest: /etc/opensearch/config/ssl
+        owner: opensearch
+        group: opensearch
+        mode: '0600'
+        force: no
+
+    - name: Copying node1 certificates
+      copy:
+        src: "./certs/opensearch-node1/{{ item }}"
+        dest: /etc/opensearch/config/ssl
+        owner: opensearch
+        group: opensearch
+        mode: '0600'
+        force: no
+      loop:
+        - node1.pem
+        - node1-key.pem
+
+    - name: Copying opensearch.yml
+      copy:
+        src: "./configs/opensearch-node1.yml"
+        dest: "/etc/opensearch/config/opensearch.yml"
+        owner: opensearch
+        group: opensearch
+      when: "'opensearch-node1' in inventory_hostname"
+
+    - name: Restart the service
+      systemd:
+        name: opensearch.service
+        state: restarted
+
+# Copying certificates and configuring opensearch-dashboards
+- name: Copying and configuring opensearch-dashboards
+  hosts: opensearch-dashboards
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+    - name: Copy certificates to opensearch-dashboards
+      copy:
+        src: "./certs/opensearch-dashboards/{{ item }}"
+        dest: /etc/opensearch-dashboards/config/ssl
+        owner: opensearch
+        group: opensearch
+        mode: '0600'
+        force: no
+      when: "'opensearch-dashboards' in inventory_hostname"
+      loop:
+        - opensearch-dashboards.pem
+        - opensearch-dashboards-key.pem
+
+    - name: Copy shared certificates to opensearch-dashboards
+      copy:
+        src: "../shared_certs/CA/{{ item }}"
+        dest: /etc/opensearch-dashboards/config/ssl
+        owner: opensearch
+        group: opensearch
+        mode: '0600'
+        force: no
+      loop:
+        - CA.pem
+        - node_creating_certs/admin.pem
+
+    - name: Copy opensearch-dashboards.yml
+      copy:
+        src: "./configs/opensearch-dashboards.yml"
+        dest: "/etc/opensearch-dashboards/config/opensearch_dashboards.yml"
+        owner: opensearch
+        group: opensearch
+
+
+    - name: Restart the service
+      systemd:
+        name: opensearch-dashboards.service
+        state: restarted

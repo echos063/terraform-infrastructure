@@ -1,0 +1,97 @@
+# Updating and installing packages
+- name: Environment for users installing
+  hosts:
+    - vector
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+    - name: Update servers
+      command: dnf makecache
+    - name: Install packages
+      package:
+        name:
+          - vim
+          - tree
+          - bash-completion
+          - nginx-1:1.18.0-8.el7.3
+          - telnet
+        state: present
+    - name: Check file bash-completion in /home/deploy/.bashrc
+      shell: cat /home/deploy/.bashrc | grep -q "Auto-completion"
+      ignore_errors: true
+      register: grep_result
+    - name: Check file bash-completion in /root/.bashrc
+      shell: cat /root/.bashrc | grep -q "Auto-completion"
+      ignore_errors: true
+      register: grep_result
+    - name: Read bash-completion file
+      slurp:
+        src: ../shared_files/bash-completion
+      delegate_to: localhost
+      become_user: ubuntu
+      register: bash_completion_contents
+    - name: Adding auto-completion into /home/deploy/.bashrc
+      lineinfile:
+        path: /home/deploy/.bashrc
+        line: "{{ bash_completion_contents['content'] | b64decode }}"
+      when: grep_result.rc !=0
+    - name: Adding auto-completion into /root/.bashrc
+      lineinfile:
+        path: /root/.bashrc
+        line: "{{ bash_completion_contents['content'] | b64decode }}"
+      when: grep_result.rc !=0
+
+    - name: Create work directory
+      file:
+        path: /etc/vector
+        owner: vector
+        group: vector
+        state: directory
+    - name: Create log directory
+      file:
+        path: /var/log/vector
+        owner: vector
+        group: vector
+        state: directory
+    - name: Create lib directory
+      file:
+        path: /var/lib/vector
+        owner: vector
+        group: vector
+        state: directory
+    - name: Create ssl directory
+      file:
+        path: /etc/vector/ssl
+        owner: vector
+        group: vector
+        state: directory
+
+
+    - name: Download Vector
+      command: sudo su vector -c "curl --proto '=https' --tlsv1.2 -sSfL https://sh.vector.dev | bash -s -- -y --prefix /etc/vector"
+
+    - name: Copy binary file and set owner
+      shell: |
+        cp /etc/vector/bin/vector /usr/bin/
+        chown vector:vector /usr/bin/vector
+      args:
+        creates: /usr/bin/vector
+
+    - name: Copy variables file and set owner
+      shell: |
+        cp /etc/vector/etc/systemd/vector.default /etc/default/
+        chown vector:vector /etc/default/vector.default
+      args:
+        creates: /etc/default/vector.default
+
+    - name: Move configuration configs to /etc/vector
+      command: sudo su vector -c "mv /etc/vector/share/vector/config/* /etc/vector/"
+
+    - name: Remove temp configs
+      command: rm -rf /etc/vector/bin/ /etc/vector/share/ /etc/vector/etc/
+
+    - name: Restart the service
+      systemd:
+        name: vector.service
+        state: restarted

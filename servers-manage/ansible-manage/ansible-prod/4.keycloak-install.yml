@@ -1,0 +1,122 @@
+# Updating and installing packages
+- name: Environment for users installing
+  hosts:
+    - keycloak
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+    - name: Update servers
+      command: dnf makecache
+    - name: Install packages
+      package:
+        name:
+          - vim
+          - tree
+          - bash-completion
+          - nginx-1:1.18.0-8.el7.3
+          - telnet
+        state: present
+    - name: Check file bash-completion in /home/deploy/.bashrc
+      shell: cat /home/deploy/.bashrc | grep -q "Auto-completion"
+      ignore_errors: true
+      register: grep_result
+    - name: Check file bash-completion in /root/.bashrc
+      shell: cat /root/.bashrc | grep -q "Auto-completion"
+      ignore_errors: true
+      register: grep_result
+    - name: Read bash-completion file
+      slurp:
+        src: ../shared_files/bash-completion
+      delegate_to: localhost
+      become_user: ubuntu
+      register: bash_completion_contents
+    - name: Adding auto-completion into /home/deploy/.bashrc
+      lineinfile:
+        path: /home/deploy/.bashrc
+        line: "{{ bash_completion_contents['content'] | b64decode }}"
+      when: grep_result.rc !=0
+    - name: Adding auto-completion into /root/.bashrc
+      lineinfile:
+        path: /root/.bashrc
+        line: "{{ bash_completion_contents['content'] | b64decode }}"
+      when: grep_result.rc !=0
+
+    - name: Create log directory for Keycloak
+      file:
+        path: /var/log/keycloak/
+        owner: keycloak
+        group: keycloak
+        state: directory
+
+    - name: Create ssl directory for Keycloak
+      file:
+        path: /etc/keycloak/ssl/
+        owner: keycloak
+        group: keycloak
+        state: directory
+
+    - name: Check if directory exists
+      stat:
+        path: /etc/keycloak/keycloak-17.0.0
+      register: keycloak_directory
+    - name: Copy configuration configs to /etc/keycloak
+      command: sudo su keycloak -c "cp -r /etc/keycloak/keycloak-17.0.0/* /etc/keycloak/"
+      when: keycloak_directory.stat.exists
+    - name: Copy certificates for Keycloak
+      copy:
+        src: "./certs/keycloak/{{ item }}"
+        dest: /etc/keycloak/ssl
+        owner: keycloak
+        group: keycloak
+        mode: '0600'
+        force: no
+      loop:
+        - keycloak.pem
+        - keycloak-key.pem
+    - name: Copy config file for Keycloak
+      copy:
+        src: "./configs/keycloak.conf"
+        dest: /etc/keycloak/conf/keycloak.conf
+        owner: keycloak
+        group: keycloak
+
+    - name: Kill all Java processes for user keycloak
+      shell: "pkill -u keycloak java"
+      ignore_errors: true
+    - name: Start Keycloak in developer mode
+      command: sudo su keycloak -c "KEYCLOAK_ADMIN=admin KEYCLOAK_ADMIN_PASSWORD=admin /etc/keycloak/bin/kc.sh start-dev >> /var/log/keycloak/init.log 2>&1 &"
+      async: 0
+      poll: 0
+    - name: Delay for 40 seconds
+      wait_for:
+        timeout: 40
+    - name: Kill all Java processes for user keycloak
+      shell: "pkill -u keycloak java"
+    - name: Start Keycloak in production mode
+      command: "sudo -u keycloak nohup /etc/keycloak/bin/kc.sh build >> /var/log/keycloak/init.log 2>&1 &"
+    - name: Delay for 30 seconds
+      wait_for:
+        timeout: 30
+    - name: Import passwords
+      command: "sudo -u keycloak nohup /etc/keycloak/bin/kc.sh start >> /var/log/keycloak/init.log 2>&1 &"
+      async: 0
+      poll: 0
+    - name: Delay for 30 seconds
+      wait_for:
+        timeout: 30
+    - name: Kill all Java processes for user keycloak
+      shell: "pkill -u keycloak java"
+      ignore_errors: true
+
+- name: Restart Keycloak
+  hosts:
+    - keycloak
+  gather_facts: no
+  become: yes
+  become_user: root
+  tasks:
+    - name: Restart the service
+      systemd:
+        name: keycloak.service
+        state: restarted
